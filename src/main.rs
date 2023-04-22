@@ -1,7 +1,10 @@
 use chrono::{Duration as ChronoDuration, Local};
+use dirs;
 use std::env;
 use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::BufReader;
+use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -72,6 +75,8 @@ fn start_pomodoro(beep_control: Arc<Mutex<bool>>) {
         }
         *beep_control.lock().unwrap() = true;
         println!("⌛ Pomodoro finished, waiting for ack ⌛");
+        // Log completed pomodoro to the file
+        log_pomodoro();
         start_beeping(beep_control.clone(), "src/beep.mp3");
 
         // Wait for acknowledgement before starting the break timer
@@ -114,4 +119,15 @@ async fn process_ack_message(mut socket: tokio::net::UnixStream, beep_control: A
     if msg == "ack\n" {
         *beep_control.lock().unwrap() = false;
     }
+}
+
+fn log_pomodoro() {
+    let path = dirs::home_dir().unwrap().join(".pomodoro-stats");
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(path)
+        .unwrap();
+    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
+    writeln!(file, "pomodoro - {}", timestamp).unwrap();
 }
