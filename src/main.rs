@@ -66,7 +66,7 @@ async fn start_server(beep_control: Arc<Mutex<bool>>) {
 fn start_pomodoro(beep_control: Arc<Mutex<bool>>) {
     loop {
         println!("🍅 Starting pomodoro! 🍅");
-        let timer_duration = ChronoDuration::seconds(10);
+        let timer_duration = ChronoDuration::minutes(25);
         let timer_end = Local::now() + timer_duration;
 
         // Work timer
@@ -85,7 +85,7 @@ fn start_pomodoro(beep_control: Arc<Mutex<bool>>) {
         }
 
         println!("☕ Time for a break ☕");
-        let break_duration = ChronoDuration::seconds(5);
+        let break_duration = ChronoDuration::minutes(5);
         let break_end = Local::now() + break_duration;
 
         // Break timer
