@@ -27,34 +27,24 @@ async fn main() {
             })
         };
 
-        let beeping_handle = {
-            let beep_control = beep_control.clone();
-            thread::spawn(move || {
-                start_beeping(beep_control.clone());
-            })
-        };
-
         start_server(beep_control.clone()).await;
 
         let _ = timer_handle.join();
-        let _ = beeping_handle.join();
     }
 }
 
-fn start_beeping(beep_control: Arc<Mutex<bool>>) {
+fn start_beeping(beep_control: Arc<Mutex<bool>>, sound_file: &str) {
     // Beep and continue beeping every N seconds until the `beep_control` is set to true
     let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
     let sink = rodio::Sink::try_new(&stream_handle).unwrap();
 
-    loop {
-        if *beep_control.lock().unwrap() {
-            let file = File::open("src/beep.mp3").unwrap();
-            let source = rodio::Decoder::new(BufReader::new(file)).unwrap();
-            sink.append(source);
-            thread::sleep(Duration::from_secs(10));
-        } else {
-            thread::sleep(Duration::from_secs(1));
-        }
+    if *beep_control.lock().unwrap() {
+        let file = File::open(sound_file).unwrap();
+        let source = rodio::Decoder::new(BufReader::new(file)).unwrap();
+        sink.append(source);
+        thread::sleep(Duration::from_secs(10));
+    } else {
+        thread::sleep(Duration::from_secs(1));
     }
 }
 
@@ -81,6 +71,8 @@ fn start_pomodoro(beep_control: Arc<Mutex<bool>>) {
             thread::sleep(Duration::from_secs(1));
         }
         *beep_control.lock().unwrap() = true;
+        println!("⌛ Pomodoro finished, waiting for ack ⌛");
+        start_beeping(beep_control.clone(), "src/beep.mp3");
 
         // Wait for acknowledgement before starting the break timer
         while *beep_control.lock().unwrap() {
@@ -96,6 +88,8 @@ fn start_pomodoro(beep_control: Arc<Mutex<bool>>) {
             thread::sleep(Duration::from_secs(1));
         }
         *beep_control.lock().unwrap() = true;
+        println!("⌛ Break finished, waiting for ack ⌛");
+        start_beeping(beep_control.clone(), "src/end_break.mp3");
 
         // Wait for acknowledgement before starting the work timer
         while *beep_control.lock().unwrap() {
