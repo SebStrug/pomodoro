@@ -17,6 +17,11 @@ use tokio::net::UnixStream;
 async fn main() {
     let args: Vec<String> = env::args().collect();
 
+    if args.len() > 1 && (args[1] == "--help" || args[1] == "-h" || args[1] == "help") {
+        print_help();
+        return;
+    }
+
     let beep_control = Arc::new(Mutex::new(false));
 
     if args.len() == 2 && args[1] == "ack" {
@@ -141,4 +146,21 @@ fn log_pomodoro() {
         .unwrap();
     let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
     writeln!(file, "pomodoro - {}", timestamp).unwrap();
+}
+
+fn print_help() {
+    println!(
+        r#"Pomodoro Timer CLI
+
+Usage:
+    pomodoro                      Start the pomodoro timer
+    pomodoro ack                  Acknowledge the timer and start the break
+    pomodoro --help | -h | help   Display this help message
+
+Description:
+    * A simple command-line pomodoro timer. Starts a 25-minute pomodoro timer,
+      followed by a 5-minute break. The timer will beep at the end of each phase.
+    * Acknowledge the timer with 'pomodoro ack' in another window to start the break or the next pomodoro.
+    * Pomodoros are logged to '~/.pomodoro-stats'"#
+    );
 }
