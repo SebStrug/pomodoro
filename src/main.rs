@@ -1,5 +1,6 @@
 use chrono::{Duration as ChronoDuration, Local};
 use dirs;
+use fs2::FileExt;
 use rodio::Source;
 use std::env;
 use std::fs::File;
@@ -48,6 +49,21 @@ async fn main() {
 async fn start_server(beep_control: Arc<Mutex<bool>>) {
     // Create a local/UNIX domain socket. Will listen in on socket for an ack.
     let socket_path = "/tmp/pomodoro.sock";
+    let lock_file_path = "/tmp/pomodoro.lock";
+
+    // Open or create the lock file
+    let lock_file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(lock_file_path)
+        .expect("Failed to open lock file");
+
+    // Try to lock the file, if it fails, exit the function
+    if let Err(_) = lock_file.try_lock_exclusive() {
+        panic!("Another instance of the Pomodoro server is already running.");
+    }
+
     let _ = std::fs::remove_file(socket_path); // Remove the file if it exists
 
     let listener = UnixListener::bind(socket_path).unwrap();
