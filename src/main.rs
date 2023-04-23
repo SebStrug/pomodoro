@@ -73,11 +73,13 @@ fn start_pomodoro(beep_control: Arc<Mutex<bool>>) {
         while Local::now() < timer_end {
             thread::sleep(Duration::from_secs(1));
         }
-        *beep_control.lock().unwrap() = true;
         println!("⌛ Pomodoro finished, waiting for ack ⌛");
-        // Log completed pomodoro to the file
+        *beep_control.lock().unwrap() = true;
         log_pomodoro();
         start_beeping(beep_control.clone(), "src/beep.mp3");
+        while *beep_control.lock().unwrap() {
+            // Waiting indefinitely for acknowledgment
+        }
 
         // Wait for acknowledgement before starting the break timer
         while *beep_control.lock().unwrap() {
@@ -85,29 +87,36 @@ fn start_pomodoro(beep_control: Arc<Mutex<bool>>) {
         }
 
         println!("☕ Time for a break ☕");
-        let break_duration = ChronoDuration::minutes(5);
+        let break_duration = ChronoDuration::minutes(10);
         let break_end = Local::now() + break_duration;
 
         // Break timer
         while Local::now() < break_end {
             thread::sleep(Duration::from_secs(1));
         }
-        *beep_control.lock().unwrap() = true;
         println!("⌛ Break finished, waiting for ack ⌛");
+        *beep_control.lock().unwrap() = true;
         start_beeping(beep_control.clone(), "src/end_break.mp3");
 
         // Wait for acknowledgement before starting the work timer
         while *beep_control.lock().unwrap() {
             thread::sleep(Duration::from_secs(1));
         }
+        print!("");
     }
 }
 
 async fn send_ack() {
-    // 'Sending an ack' means writing a literal 'ack' to a socket
     let socket_path = "/tmp/pomodoro.sock";
-    let mut socket = UnixStream::connect(socket_path).await.unwrap();
-    let _ = socket.write_all(b"ack\n").await;
+    match UnixStream::connect(socket_path).await {
+        Ok(mut socket) => {
+            let _ = socket.write_all(b"ack\n").await;
+        }
+        Err(e) => {
+            eprintln!("Error connecting to the socket: {}", e);
+            eprintln!("Make sure the Pomodoro timer is running.");
+        }
+    }
 }
 
 async fn process_ack_message(mut socket: tokio::net::UnixStream, beep_control: Arc<Mutex<bool>>) {
@@ -117,11 +126,13 @@ async fn process_ack_message(mut socket: tokio::net::UnixStream, beep_control: A
     let msg = String::from_utf8_lossy(&buf);
 
     if msg == "ack\n" {
+        println!("Received ack!");
         *beep_control.lock().unwrap() = false;
     }
 }
 
 fn log_pomodoro() {
+    // Log pomodoro to file `~/.pomodoro-stats`
     let path = dirs::home_dir().unwrap().join(".pomodoro-stats");
     let mut file = OpenOptions::new()
         .append(true)
