@@ -1,5 +1,6 @@
 use chrono::{Duration as ChronoDuration, Local};
 use dirs;
+use rodio::Source;
 use std::env;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -12,6 +13,9 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::UnixListener;
 use tokio::net::UnixStream;
+
+const BEEP: &[u8] = include_bytes!("../resources/beep.mp3");
+const END_BREAK: &[u8] = include_bytes!("../resources/end_break.mp3");
 
 #[tokio::main]
 async fn main() {
@@ -41,21 +45,6 @@ async fn main() {
     }
 }
 
-fn start_beeping(beep_control: Arc<Mutex<bool>>, sound_file: &str) {
-    // Beep and continue beeping every N seconds until the `beep_control` is set to true
-    let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
-    let sink = rodio::Sink::try_new(&stream_handle).unwrap();
-
-    if *beep_control.lock().unwrap() {
-        let file = File::open(sound_file).unwrap();
-        let source = rodio::Decoder::new(BufReader::new(file)).unwrap();
-        sink.append(source);
-        thread::sleep(Duration::from_secs(10));
-    } else {
-        thread::sleep(Duration::from_secs(1));
-    }
-}
-
 async fn start_server(beep_control: Arc<Mutex<bool>>) {
     // Create a local/UNIX domain socket. Will listen in on socket for an ack.
     let socket_path = "/tmp/pomodoro.sock";
@@ -81,7 +70,7 @@ fn start_pomodoro(beep_control: Arc<Mutex<bool>>) {
         println!("⌛ Pomodoro finished, waiting for ack ⌛");
         *beep_control.lock().unwrap() = true;
         log_pomodoro();
-        start_beeping(beep_control.clone(), "src/beep.mp3");
+        start_beeping(beep_control.clone(), BEEP);
         while *beep_control.lock().unwrap() {
             // Waiting indefinitely for acknowledgment
         }
@@ -101,7 +90,7 @@ fn start_pomodoro(beep_control: Arc<Mutex<bool>>) {
         }
         println!("⌛ Break finished, waiting for ack ⌛");
         *beep_control.lock().unwrap() = true;
-        start_beeping(beep_control.clone(), "src/end_break.mp3");
+        start_beeping(beep_control.clone(), END_BREAK);
 
         // Wait for acknowledgement before starting the work timer
         while *beep_control.lock().unwrap() {
@@ -109,6 +98,39 @@ fn start_pomodoro(beep_control: Arc<Mutex<bool>>) {
         }
         print!("");
     }
+}
+
+fn start_beeping(beep_control: Arc<Mutex<bool>>, sound_data: &[u8]) {
+    // Beep and continue beeping every N seconds until the `beep_control` is set to true
+    let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
+    let sink = rodio::Sink::try_new(&stream_handle).unwrap();
+
+    let tmp_dir = std::env::temp_dir();
+    let tmp_file_path = tmp_dir.join("tmp_sound.mp3");
+    let mut tmp_file = File::create(&tmp_file_path).expect("Failed to create temporary file");
+    tmp_file
+        .write_all(sound_data)
+        .expect("Failed to write sound data to temporary file");
+
+    // Load the sound file using the temporary file path
+    let file = File::open(&tmp_file_path).unwrap();
+    let source = rodio::Decoder::new(BufReader::new(file)).unwrap();
+
+    // Set the sound to repeat and play it
+    sink.append(source.repeat_infinite());
+    sink.play();
+
+    // Wait until the `beep_control` is set to true
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        if *beep_control.lock().unwrap() {
+            break;
+        }
+    }
+
+    // Stop the sound and clean up the temporary file
+    sink.stop();
+    std::fs::remove_file(tmp_file_path).expect("Failed to remove temporary file");
 }
 
 async fn send_ack() {
